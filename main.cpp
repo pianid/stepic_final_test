@@ -42,7 +42,7 @@ void* worker(void* param) {
     }
 
     send(cur_sock, req.c_str(), req.length(), MSG_NOSIGNAL);
-//    close(cur_sock);
+    close(cur_sock);
 
     return 0;
 }
