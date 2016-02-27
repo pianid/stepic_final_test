@@ -1,15 +1,20 @@
 #include <iostream>
 #include <string>
+#include <memory>
 
+#include <unistd.h>
+#include <string.h>
+#include <getopt.h>
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/epoll.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+
 #include <netinet/in.h>
-#include <getopt.h>
 #include <arpa/inet.h>
-#include <unistd.h>
-#include <string.h>
 #include <pthread.h>
+#include <signal.h>
 
 int set_nonblock(int fd) {
 
@@ -27,13 +32,20 @@ int set_nonblock(int fd) {
 
 void* worker(void* param) {
 
-    intptr_t cur_sock = reinterpret_cast<intptr_t>(param);
+    auto deleter_sock = [](int* sock) {
+        close(*sock);
+        delete sock;
+    };
+
+    std::unique_ptr<int, decltype(deleter_sock)> cur_sock(
+            static_cast<int*>(param), deleter_sock);
+
     std::string req;
     req.reserve(4096);
     while (true) {
 
         char buf[4096] = {0};
-        ssize_t received = recv(cur_sock, buf, 4095, MSG_NOSIGNAL);
+        ssize_t received = recv(*cur_sock, buf, 4095, MSG_NOSIGNAL);
         if (received <= 0) {
             break;
         }
@@ -41,10 +53,59 @@ void* worker(void* param) {
 
     }
 
-    send(cur_sock, req.c_str(), req.length(), MSG_NOSIGNAL);
-    close(cur_sock);
+    const std::string log_path = "/home/pian/final_log";
+    auto deleter_file = [](FILE* f) {
+        fclose(f);
+    };
+
+    pthread_t self_id= pthread_self();
+    std::unique_ptr<FILE, decltype(deleter_file)> log(
+            fopen((log_path + std::to_string(self_id)).c_str(), "w"), deleter_file);
+
+    if (req.empty()) {
+        fprintf(log.get(), "%s\r\n", "Empty request");
+        return 0;
+    }
+
+    fprintf(log.get(), "%s%s\r\n", "Request:\r\n", req.c_str());
+
+    char cmd[4] = {0};
+    strncpy(cmd, req.c_str(), 3);
+
+    if (strncmp(cmd, "GET", 3) != 0) {
+        fprintf(log.get(), "%s%s\r\n", "Invalid cmd: ", cmd);
+        return 0;
+    }
+
+    size_t index = 3;
+    while (req[index] == ' ' && index < req.length()) ++index;
+
+
+
+    send(*cur_sock, req.c_str(), req.length(), MSG_NOSIGNAL);
 
     return 0;
+}
+
+void demonize() {
+
+    umask(0);
+
+    if (fork() != 0) {
+        exit(0);
+    }
+
+    setsid();
+
+    struct sigaction sa;
+    sa.sa_handler = SIG_IGN;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    sigaction(SIGHUP, &sa, nullptr);
+
+    if (fork() != 0) {
+        exit(0);
+    }
 }
 
 int run(int srvr) {
@@ -96,8 +157,7 @@ int run(int srvr) {
                 if (Events[index].events & EPOLLIN){
 
                     pthread_t t;
-                    pthread_create(&t, nullptr, worker,
-                                   reinterpret_cast<void*>(cur_sock));
+                    pthread_create(&t, nullptr, worker, new int(cur_sock));
                     pthread_detach(t);
 
                 } else {
@@ -119,7 +179,8 @@ int main(int argc, char** argv) {
     std::string port;
     std::string dir;
     int opt = -1;
-    while ((opt = getopt(argc, argv, "h:p:d:")) != -1) {
+    bool demon = true;
+    while ((opt = getopt(argc, argv, "h:p:d:t")) != -1) {
         switch(opt) {
             case 'h':
                 ip = optarg;
@@ -133,10 +194,18 @@ int main(int argc, char** argv) {
                 dir = optarg;
                 break;
 
+            case 't':
+                demon = false;
+                break;
+
             default:
                 std::cout << "Error getopt" << std::endl;
                 return 1;
         }
+    }
+
+    if (demon) {
+        demonize();
     }
 
     chdir(dir.c_str());
@@ -144,7 +213,7 @@ int main(int argc, char** argv) {
 
     sockaddr_in sa;
     sa.sin_family = AF_INET;
-    sa.sin_port = htons(atoi(port.c_str()));
+    sa.sin_port = htons(static_cast<uint16_t>(std::atoi(port.c_str())));
     if (inet_pton(AF_INET, ip.c_str(), &sa.sin_addr) != 1) {
         std::cout << "Error inet_pton: " << strerror(errno) << std::endl;
         return 1;
