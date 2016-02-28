@@ -86,19 +86,15 @@ void* worker(void* param) {
         file_name += req[i];
     }
 
-    if (file_name.empty()) {
-        fprintf(log.get(), "%s\r\n", "Empty file_name");
-        return 0;
-    } else {
-        fprintf(log.get(), "%s%s\r\n", "file_name: ", file_name.c_str());
+    fprintf(log.get(), "%s%s\r\n", "file_name: ", file_name.c_str());
+    if (!file_name.empty()) {
         file_name = file_name.substr(1, file_name.length() - 1);
     }
-
 
     std::string resp;
     resp.reserve(4096);
     struct stat data_stat;
-    if ((stat(file_name.c_str(), &data_stat) == -1) || S_ISDIR(data_stat.st_mode)) {
+    if (file_name.empty() || (stat(file_name.c_str(), &data_stat) == -1) || S_ISDIR(data_stat.st_mode)) {
 
         const char not_found[] = "HTTP/1.0 404 Not Found\r\n\r\n";
         resp = not_found;
