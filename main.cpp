@@ -109,7 +109,7 @@ void* worker(void* param) {
                 fopen(file_name.c_str(), "r"), deleter_file);
 
         if (data_file.get() != nullptr) {
-            const char founded[] = "HTTP/1.0 200 OK\r\n\r\n";
+            const char founded[] = "HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n";
 
 
             fseek(data_file.get(), 0, SEEK_END);
