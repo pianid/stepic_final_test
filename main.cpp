@@ -53,7 +53,7 @@ void* worker(void* param) {
 
     }
 
-    const std::string log_path = "/home/box/final_log";
+    const std::string log_path = "/home/pian/final_log";
     auto deleter_file = [](FILE* f) {
         fclose(f);
     };
@@ -82,7 +82,7 @@ void* worker(void* param) {
 
     std::string file_name;
     file_name.reserve(256);
-    for (size_t i = index; i < req.length() && req[i] != ' '; ++i) {
+    for (size_t i = index; i < req.length() && req[i] != ' ' && req[i] != '?'; ++i) {
         file_name += req[i];
     }
 
@@ -96,7 +96,7 @@ void* worker(void* param) {
     struct stat data_stat;
     if (file_name.empty() || (stat(file_name.c_str(), &data_stat) == -1) || S_ISDIR(data_stat.st_mode)) {
 
-        const char not_found[] = "HTTP/1.0 404 Not Found\r\n\r\n";
+        const char not_found[] = "HTTP/1.0 404 Not Found\r\nContent-type: text/html\r\n\r\n<html><head></head><body>Not found</body></html>";
         resp = not_found;
 
     } else {
