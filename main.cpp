@@ -53,7 +53,7 @@ void* worker(void* param) {
 
     }
 
-    const std::string log_path = "/home/pian/final_log";
+    const std::string log_path = "/home/box/final_log";
     auto deleter_file = [](FILE* f) {
         fclose(f);
     };
@@ -78,11 +78,55 @@ void* worker(void* param) {
     }
 
     size_t index = 3;
-    while (req[index] == ' ' && index < req.length()) ++index;
+    while (index < req.length() && req[index] == ' ') ++index;
+
+    std::string file_name;
+    file_name.reserve(256);
+    for (size_t i = index; i < req.length() && req[i] != ' '; ++i) {
+        file_name += req[i];
+    }
+
+    if (file_name.empty()) {
+        fprintf(log.get(), "%s\r\n", "Empty file_name");
+        return 0;
+    } else {
+        fprintf(log.get(), "%s%s\r\n", "file_name: ", file_name.c_str());
+        file_name = file_name.substr(1, file_name.length() - 1);
+    }
 
 
+    std::string resp;
+    resp.reserve(4096);
+    struct stat data_stat;
+    if ((stat(file_name.c_str(), &data_stat) == -1) || S_ISDIR(data_stat.st_mode)) {
 
-    send(*cur_sock, req.c_str(), req.length(), MSG_NOSIGNAL);
+        const char not_found[] = "HTTP/1.0 404 Not Found\r\n\r\n";
+        resp = not_found;
+
+    } else {
+
+        std::unique_ptr<FILE, decltype(deleter_file)> data_file(
+                fopen(file_name.c_str(), "r"), deleter_file);
+
+        if (data_file.get() != nullptr) {
+            const char founded[] = "HTTP/1.0 200 OK\r\n\r\n";
+
+
+            fseek(data_file.get(), 0, SEEK_END);
+            long file_size = ftell(data_file.get());
+            rewind(data_file.get());
+
+            std::unique_ptr<char[]> data(new char[file_size + 1]);
+            fread(data.get(), 1, file_size, data_file.get());
+            data[file_size] = 0;
+
+            resp = founded;
+            resp += data.get();
+        }
+
+    }
+
+    send(*cur_sock, resp.c_str(), resp.length(), MSG_NOSIGNAL);
 
     return 0;
 }
