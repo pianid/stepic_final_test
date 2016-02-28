@@ -53,7 +53,7 @@ void* worker(void* param) {
 
     }
 
-    const std::string log_path = "/home/pian/final_log";
+    const std::string log_path = "/home/box/final_log";
     auto deleter_file = [](FILE* f) {
         fclose(f);
     };
